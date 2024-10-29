@@ -1,6 +1,7 @@
 from Include import *
 from queue import PriorityQueue
 from tqdm import tqdm
+import heapq
 
 class Stats:
     def __init__(self, time, coldStartTime:int=0, memorySize:int=0, excutingTime:int=0):
@@ -19,7 +20,7 @@ class Simulator:
         
         self.eventQueue = PriorityQueue()
         self.memoryUsed = 0
-        self.cache = PriorityQueue()
+        self.cache = []
         self.stats:list[Stats] = []
         self.curMin = 0
         self.coldStartTime = 0
@@ -42,13 +43,6 @@ class Simulator:
                     self.eventQueue.put((time, functionId))
 
     def run(self):
-        # sim_lenth = self.eventQueue.qsize()
-        # i=0
-        # while not self.eventQueue.empty():
-        #     self.process_event()
-        #     i+=1
-        #     if i%int(sim_lenth/10)==0:
-        #         print(f"Progress: {i}/{sim_lenth}")
         for _ in tqdm(range(self.eventQueue.qsize())):
             self.process_event()
     
@@ -56,26 +50,38 @@ class Simulator:
     def getPriority(self, time, functionId):
         if self.policy=="FIFO":
             return time
+        elif self.eviction_policy == "RAND":
+            return np.random.randint(10)
         return time
             
     def freeCache(self, size):
         assert self.memoryBudget>=size, "Memory budget too small"
         while self.memoryUsed+size>self.memoryBudget:
-            _, functionId = self.cache.get()
+            priority, functionId = heapq.heappop(self.cache)
             functionInfo = self.functionMap[functionId]
             self.memoryUsed-=functionInfo.memory
     
     def addCache(self, time, functionId):
         assert self.memoryUsed+self.functionMap[functionId].memory<=self.memoryBudget, "Memory not enough"
-        self.cache.put((self.getPriority(time, functionId), functionId))
+        # self.cache.put((self.getPriority(time, functionId), functionId))
+        heapq.heappush(self.cache, (self.getPriority(time, functionId), functionId))
         self.memoryUsed+=self.functionMap[functionId].memory
+        
+    def updateCache(self, time, functionId):
+        for i, (priority, function) in enumerate(self.cache):
+            if function == functionId:
+                self.cache[i] = (self.getPriority(time, functionId), function)
+                heapq.heapify(self.cache)
+                return True
+        return False
         
     def process_event(self):
         time, functionId = self.eventQueue.get()
         functionInfo = self.functionMap[functionId]
         coldStartTime = 0
         excutingTime = functionInfo.duration
-        if functionId not in [_[1] for _ in self.cache.queue]:
+        success = self.updateCache(time, functionId)
+        if not success:
             coldStartTime = functionInfo.coldStartTime
             excutingTime += coldStartTime
             self.freeCache(functionInfo.memory)
