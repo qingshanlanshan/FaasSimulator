@@ -2,6 +2,7 @@ from Include import *
 from queue import PriorityQueue
 from tqdm import tqdm
 import heapq
+import csv
 
 class Stats:
     def __init__(self, time, coldStartTime:int=0, memorySize:int=0, excutingTime:int=0):
@@ -12,7 +13,7 @@ class Stats:
 
 
 class Simulator:
-    def __init__(self, memoryBudget:float, functionMap:dict[tuple,Function], invocationMap:dict[tuple,Invocation], policy:str="FIFO", timeLimit:int=0, functionLimit:int=0):
+    def __init__(self, memoryBudget:float, functionMap:dict[tuple,Function], invocationMap:dict[tuple,Invocation], policy:str="LRU", timeLimit:int=0, functionLimit:int=0):
         self.memoryBudget = memoryBudget # MB
         self.functionMap = functionMap
         self.invocationMap = invocationMap
@@ -46,11 +47,30 @@ class Simulator:
         for _ in tqdm(range(self.eventQueue.qsize())):
             self.process_event()
     
+    def setPolicy(self, policy:str):
+        self.policy = policy
     
     def getPriority(self, time, functionId):
-        if self.policy=="FIFO":
+        if self.policy == "LRU":
             return time
-        elif self.eviction_policy == "RAND":
+        elif self.policy == "LFU":
+            # hack: use the frequency of the current minute
+            return self.invocationMap[functionId].Counts[int(ms2min(time))]
+        elif self.policy == "GD":
+            freq = self.invocationMap[functionId].Counts[int(ms2min(time))]
+            # cost = cold start time
+            cost = self.functionMap[functionId].coldStartTime
+            size=self.functionMap[functionId].memory
+            return time + freq*cost/size
+        elif self.policy == "FREQ":
+            freq = self.invocationMap[functionId].Counts[int(ms2min(time))]
+            cost = self.functionMap[functionId].coldStartTime
+            return time+freq*cost
+        elif self.policy == "SIZE":
+            cost = self.functionMap[functionId].coldStartTime
+            size=self.functionMap[functionId].memory
+            return time+cost/size
+        elif self.policy == "RAND":
             return np.random.randint(10)
         return time
             
@@ -68,6 +88,7 @@ class Simulator:
         self.memoryUsed+=self.functionMap[functionId].memory
         
     def updateCache(self, time, functionId):
+        # linear search, can be optimized by hash table or bloom filter
         for i, (priority, function) in enumerate(self.cache):
             if function == functionId:
                 self.cache[i] = (self.getPriority(time, functionId), function)
@@ -94,3 +115,10 @@ class Simulator:
         if curMin != self.curMin:
             self.curMin = curMin
             self.stats.append(Stats(curMin, self.coldStartTime, self.memoryUsed, self.excutingTime))
+
+    def dumpStats(self,location:str):
+        csv_file = open(f"{location}/{self.policy}.csv", "w")
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["time", "coldStartTime", "memorySize", "excutingTime"])
+        for stat in self.stats:
+            csv_writer.writerow([stat.time, stat.coldStartTime, stat.memorySize, stat.excutingTime])
