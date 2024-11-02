@@ -2,11 +2,12 @@ import numpy as np
 import csv 
 from Include import *
 
-def load_data(datasetPath:str):
+def parse_data(datasetPath:str, day:int=1):
     # datasetPath="/Users/jiaruiye/Code/Serverless/dataset"
-    durationFile=f"{datasetPath}/function_durations_percentiles.anon.d01.csv"
-    memoryFile=f"{datasetPath}/app_memory_percentiles.anon.d01.csv"
-    invocationFile=f"{datasetPath}/invocations_per_function_md.anon.d01.csv"
+    strDay = f"{day:02}"
+    durationFile=f"{datasetPath}/function_durations_percentiles.anon.d{strDay}.csv"
+    memoryFile=f"{datasetPath}/app_memory_percentiles.anon.d{strDay}.csv"
+    invocationFile=f"{datasetPath}/invocations_per_function_md.anon.d{strDay}.csv"
     durationData = None
     memoryData = None
     invocationData = None
@@ -80,13 +81,45 @@ def load_data(datasetPath:str):
             invocationMap[(HashOwner, HashApp, HashFunction)] = Invocation(HashOwner, HashApp, HashFunction, Trigger, Counts)
     print("Data loaded successfully")
     
+    # dump maps to files
+    with open(f"{datasetPath}/functionMap_d{strDay}.csv", 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(["HashOwner", "HashApp", "HashFunction", "coldStartTime", "duration", "memory"])
+        for key in functionMap:
+            function = functionMap[key]
+            writer.writerow([function.HashOwner, function.HashApp, function.HashFunction, function.coldStartTime, function.duration, function.memory])
+    with open(f"{datasetPath}/invocationMap_d{strDay}.csv", 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(["HashOwner", "HashApp", "HashFunction", "Trigger", "Counts"])
+        for key in invocationMap:
+            invocation = invocationMap[key]
+            writer.writerow([invocation.HashOwner, invocation.HashApp, invocation.HashFunction, invocation.Trigger]+invocation.Counts)
+    return functionMap, invocationMap
+
+def load_data(datasetPath:str, day:int=1):
+    strDay = f"{day:02}"
+    functionMap = {}
+    invocationMap = {}
+    try:
+        with open(f"{datasetPath}/functionMap_d{strDay}.csv", 'r') as f:
+            reader = csv.reader(f)
+            for line in reader:
+                if line[0] == "HashOwner":
+                    continue
+                functionMap[(line[0], line[1], line[2])] = Function(line[0], line[1], line[2], float(line[3]), float(line[4]), float(line[5]))
+    except IOError:
+        print("Could not read file: ", f"{datasetPath}/functionMap_d{strDay}.csv")
+    try:
+        with open(f"{datasetPath}/invocationMap_d{strDay}.csv", 'r') as f:
+            reader = csv.reader(f)
+            for line in reader:
+                if line[0] == "HashOwner":
+                    continue
+                invocationMap[(line[0], line[1], line[2])] = Invocation(line[0], line[1], line[2], line[3], list(map(int, line[4:])))
+    except IOError:
+        print("Could not read file: ", f"{datasetPath}/invocationMap_d{strDay}.csv")
     return functionMap, invocationMap
     
     
 if __name__ == "__main__":
-    functionMap, invocationMap = load_data()
-    for i,(HashOwner, HashApp, HashFunction) in enumerate(functionMap):
-        if i>10:
-            break
-        function = functionMap[(HashOwner, HashApp, HashFunction)]
-        print(f"Function {i}: {function.HashOwner}, {function.HashApp}, {function.HashFunction}, {function.coldStartTime}, {function.duration}, {function.memory}")
+   functionMap, invocationMap = parse_data("/Users/jiaruiye/Code/Serverless/dataset", 1)
