@@ -1,8 +1,9 @@
 from Include import *
 from queue import PriorityQueue
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import heapq
 import csv
+from multiprocessing import current_process
 
 
 class Stats:
@@ -23,11 +24,12 @@ class Stats:
         self.nExcution = nExcution
 
 
-def log(msg: str, verbose: bool = True, filename: str = "log.txt", newfile: bool = False):
+def log(msg: str, verbose: bool = False, filename: str = "log.txt", newfile: bool = False):
+    if not verbose:
+        return
     if newfile:
         open(filename, "w").write("")
-    if verbose:
-        open(filename, "a").write(msg)
+    open(filename, "a").write(msg)
 
 
 class Container:
@@ -51,6 +53,7 @@ class Simulator:
         timeLimit: int = 0,
         functionLimit: int = 0,
         logInterval: int = 1000,
+        progressBar: bool = False,
     ):
         self.memoryBudget = memoryBudget  # MB
         self.functionMap = functionMap
@@ -59,7 +62,7 @@ class Simulator:
         self.logInterval = logInterval
         self.TTL = min2ms(10)
 
-        self.eventQueue = PriorityQueue()
+        self.eventQueue = []
         self.memoryUsed = 0
         self.cache: list[Container] = []
         self.stats: list[Stats] = []
@@ -70,17 +73,17 @@ class Simulator:
         self.nColdStart = 0
         self.nExcution = 0
         self.minMemoryReq = 0
+        self.filename=f"{self.policy}"
+        self.step = 0
+        self.progressBar = progressBar
 
         # FassCache actually uses a logical clock instead of a physical clock
         # The clock is updated by the the priority of the envicted cache item
         self.logicalClock = 0
 
-        with open(f"./log/{self.policy}.log", "w") as f:
-            pass
-
         # init event queue
         functionCount = 0
-        for functionId in tqdm(self.invocationMap):
+        for functionId in self.invocationMap:
             functionCount += 1
             if functionLimit and functionCount > functionLimit:
                 break
@@ -92,44 +95,70 @@ class Simulator:
                     continue
                 for i in range(count):
                     time = min2ms(min + i / count)
-                    self.eventQueue.put((time, functionId))
+                    self.eventQueue.append((time, functionId))
+        self.eventQueue.sort(key=lambda x: x[0])
 
     def run(self):
-        log(f"Policy {self.policy}\n", filename=f"./log/{self.policy}.log", newfile=True)
+        log(f"Policy {self.policy}\n", filename=f"./log/{self.filename}.log", newfile=True)
         log("Start simulation\n", newfile=True)
-        for _ in tqdm(range(self.eventQueue.qsize())):
+        if self.progressBar:
+            barPosition=current_process()._identity[0]-1
+            rangeObject=tqdm(range(len(self.eventQueue)), desc=self.policy,position=barPosition,leave=False)
+        else:
+            rangeObject=range(len(self.eventQueue))
+        for _ in rangeObject:
             self.process_event()
-        print("Min memory requirement", self.minMemoryReq)
+            self.step += 1
 
     def setPolicy(self, policy: str):
         self.policy = policy
 
-    def getFreq(self, functionId):
+    def getFreq(self, functionId, time):
         return sum([container.frequency for container in self.cache if container.functionId == functionId])
+    
+        # real frequency, but perfroms bad
+        freqWindow = min2ms(1)
+        freq = 0
+        step = self.step -1
+        while step >= 0:
+            eventTime, eventFunctionId = self.eventQueue[step]
+            if time - eventTime > freqWindow:
+                break
+            if functionId == eventFunctionId:
+                freq += 1
+            step -= 1
+        return freq
+            
+            
 
     def getPriority(self, time, functionId):
-        freq = self.getFreq(functionId)
-        # freq = self.invocationMap[functionId].Counts[int(ms2min(time))]
+        freq = self.getFreq(functionId, time)
         cost = self.functionMap[functionId].coldStartTime
         size = self.functionMap[functionId].memory
         priority = time
         if self.policy == "LRU":
             priority = time
         elif self.policy == "LFU":
-            priority = time + freq
+            priority = self.logicalClock + freq
         elif self.policy == "GD":
             priority = self.logicalClock + freq * (cost / size)
-        elif self.policy == "FREQ":
+        elif self.policy == "FREQCOST":
             priority = self.logicalClock + freq * cost
-        elif self.policy == "SIZE":
+        elif self.policy == "FREQSIZE":
             priority = self.logicalClock + freq / size
+        elif self.policy == "COSTSIZE":
+            priority = self.logicalClock + cost / size
+        elif self.policy == "SIZE":
+            priority = self.logicalClock + 1/size
+        elif self.policy == "COST":
+            priority = self.logicalClock + cost
         elif self.policy == "TTL":
             priority = time
         elif self.policy == "RAND":
             priority = np.random.randint(10)
         log(
             f"time {time}, clock {self.logicalClock}, functionId {functionId}, freq {freq}, cost {cost}, size {size}, priority {priority}\n",
-            filename=f"./log/{self.policy}.log",
+            filename=f"./log/{self.filename}.log",
         )
         return priority
 
@@ -179,17 +208,17 @@ class Simulator:
                 else:
                     i += 1
         # find available container and update
-        for i,container in enumerate(self.cache):
+        for container in self.cache:
             if container.functionId == functionId and container.endTime < time:
-                self.cache[i].priority = self.getPriority(time, functionId)
-                self.cache[i].endTime = time + self.functionMap[functionId].duration
-                self.cache[i].frequency += 1
-                return self.cache[i].priority
+                container.priority = self.getPriority(time, functionId)
+                container.endTime = time + self.functionMap[functionId].duration
+                container.frequency += 1
+                return container.priority
         # no available container
         return None
 
     def process_event(self):
-        time, functionId = self.eventQueue.get()
+        time, functionId = self.eventQueue[self.step]
         functionInfo = self.functionMap[functionId]
         coldStartTime = 0
         excutingTime = functionInfo.duration
@@ -206,9 +235,9 @@ class Simulator:
             self.nColdStart += 1
         self.nExcution += 1
         # sync priority of all containers with the same functionId
-        for i,container in enumerate(self.cache):
+        for container in self.cache:
             if container.functionId == functionId:
-                self.cache[i].priority = priority
+                container.priority = priority
         
         # stats
         self.coldStartTime += coldStartTime
@@ -227,12 +256,13 @@ class Simulator:
             )
             log(
                 f"time {time}, coldStartTime {self.coldStartTime}, memoryUsed {self.memoryUsed}, excutingTime {self.excutingTime}, nColdStart {self.nColdStart}, nExcution {self.nExcution}\n",
-                filename=f"./log/{self.policy}.log",
+                filename=f"./log/{self.filename}.log",
             )
 
     def dumpStats(self, location: str):
-        csv_file = open(f"{location}/{self.policy}.csv", "w")
+        csv_file = open(f"{location}/{self.filename}.csv", "w")
         csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["MinMemoryReq", self.minMemoryReq])
         csv_writer.writerow(
             [
                 "time",
