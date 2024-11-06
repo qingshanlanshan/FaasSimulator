@@ -1,6 +1,7 @@
 import numpy as np
 import csv 
 from Include import *
+import heapq
 
 def parse_data(datasetPath:str, day:int=1):
     # datasetPath="/Users/jiaruiye/Code/Serverless/dataset"
@@ -96,30 +97,112 @@ def parse_data(datasetPath:str, day:int=1):
             writer.writerow([invocation.HashOwner, invocation.HashApp, invocation.HashFunction, invocation.Trigger]+invocation.Counts)
     return functionMap, invocationMap
 
-def load_data(datasetPath:str, day:int=1):
+def load_data(datasetPath:str, day:int=1, type:str=None):
     strDay = f"{day:02}"
     functionMap = {}
     invocationMap = {}
+    if type:
+        type = f"_{type}"
+    else:
+        type = ""
+    functionFile = f"{datasetPath}/functionMap{type}_d{strDay}.csv"
+    invocationFile = f"{datasetPath}/invocationMap{type}_d{strDay}.csv"
     try:
-        with open(f"{datasetPath}/functionMap_d{strDay}.csv", 'r') as f:
+        with open(functionFile, 'r') as f:
             reader = csv.reader(f)
             for line in reader:
                 if line[0] == "HashOwner":
                     continue
                 functionMap[(line[0], line[1], line[2])] = Function(line[0], line[1], line[2], float(line[3]), float(line[4]), float(line[5]))
     except IOError:
-        print("Could not read file: ", f"{datasetPath}/functionMap_d{strDay}.csv")
+        print("Could not read file: ", functionFile)
     try:
-        with open(f"{datasetPath}/invocationMap_d{strDay}.csv", 'r') as f:
+        with open(invocationFile, 'r') as f:
             reader = csv.reader(f)
             for line in reader:
                 if line[0] == "HashOwner":
                     continue
                 invocationMap[(line[0], line[1], line[2])] = Invocation(line[0], line[1], line[2], line[3], list(map(int, line[4:])))
     except IOError:
-        print("Could not read file: ", f"{datasetPath}/invocationMap_d{strDay}.csv")
+        print("Could not read file: ", invocationFile)
+    if len(functionMap) == 0:
+        functionMap, invocationMap = parse_data(datasetPath, day)
     return functionMap, invocationMap
+
+def getRareData(functionMap, invocationMap, nFunction:int=100):
+    heap = []
+    for functionId in invocationMap:
+        invocation = invocationMap[functionId]
+        heapq.heappush(heap, (sum(invocation.Counts), functionId))
+    rareFuncs = heapq.nsmallest(nFunction, heap)
+    newInvocationMap = {}
+    newfunctionMap = {}
+    for _, functionId in rareFuncs:
+        newInvocationMap[functionId] = invocationMap[functionId]
+        newfunctionMap[functionId] = functionMap[functionId]
+    return newfunctionMap, newInvocationMap
+
+def getRandomData(functionMap, invocationMap, nFunction:int=100):
+    functionKeys = list(invocationMap.keys())
+    randomIndexes = np.random.choice(range(len(functionKeys)), nFunction, replace=False)
+    newfunctionMap = {}
+    newInvocationMap = {}
+    for index in randomIndexes:
+        key = functionKeys[index]
+        newfunctionMap[key] = functionMap[key]
+        newInvocationMap[key] = invocationMap[key]
+    return newfunctionMap, newInvocationMap
+
+def getRepresentativeData(functionMap, invocationMap, nFunction:int=100):
+    allFuncs = []
+    for functionId in invocationMap:
+        invocation = invocationMap[functionId]
+        allFuncs.append((sum(invocation.Counts), functionId))
+    allFuncs.sort(reverse=True)
+    allFuncs = [functionId for _, functionId in allFuncs]
+    # sampled from n parts
+    nSample = nFunction//4
+    newfunctionMap = {}
+    newInvocationMap = {}
+    for i in range(4):
+        start = i*(len(allFuncs)//4)
+        end = (i+1)*(len(allFuncs)//4)
+        randomIndex = np.random.choice(range(start, end), nSample, replace=False)
+        for index in randomIndex:
+            functionId = allFuncs[index]
+            newfunctionMap[functionId] = functionMap[functionId]
+            newInvocationMap[functionId] = invocationMap[functionId]
+    return newfunctionMap, newInvocationMap
     
+def getDataset(functionMap, invocationMap, datasetType:str, nFunction:int=100):
+    if datasetType == "Rare":
+        return getRareData(functionMap, invocationMap, nFunction)
+    elif datasetType == "Random":
+        return getRandomData(functionMap, invocationMap, nFunction)
+    elif datasetType == "Representative":
+        return getRepresentativeData(functionMap, invocationMap, nFunction)
+    else:
+        raise ValueError("Invalid dataset type")
+    
+def dumpData(functionMap, invocationMap, type:str, datasetPath:str, day:int=1):
+    strDay = f"{day:02}"
+    with open(f"{datasetPath}/functionMap_{type}_d{strDay}.csv", 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(["HashOwner", "HashApp", "HashFunction", "coldStartTime", "duration", "memory"])
+        for key in functionMap:
+            function = functionMap[key]
+            writer.writerow([function.HashOwner, function.HashApp, function.HashFunction, function.coldStartTime, function.duration, function.memory])
+    with open(f"{datasetPath}/invocationMap_{type}_d{strDay}.csv", 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(["HashOwner", "HashApp", "HashFunction", "Trigger", "Counts"])
+        for key in invocationMap:
+            invocation = invocationMap[key]
+            writer.writerow([invocation.HashOwner, invocation.HashApp, invocation.HashFunction, invocation.Trigger]+invocation.Counts)
     
 if __name__ == "__main__":
-   functionMap, invocationMap = parse_data("/Users/jiaruiye/Code/Serverless/dataset", 1)
+    for type in ["Representative", "Rare", "Random"]:
+        functionMap, invocationMap = load_data("/home/jiarui/Serverless/dataset", 1)
+        functionMap, invocationMap = getDataset(functionMap, invocationMap, type, 400 if type!="Rare" else 1000)
+        print(f"{type} dataset, function count: {len(invocationMap)}")
+        dumpData(functionMap, invocationMap, type, "/home/jiarui/Serverless/dataset", 1)
+        
