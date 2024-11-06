@@ -108,10 +108,10 @@ class Simulator:
         self.log(f"Policy {self.policy}\n", filename=f"./log/{self.filename}.log", newfile=True)
         # log("Start simulation\n", newfile=True)
         if self.progressBar:
-            try:
-                barPosition=current_process()._identity[0]
-            except:
-                barPosition=0
+            # try:
+            #     barPosition=current_process()._identity[0]
+            # except:
+            barPosition=0
             rangeObject=tqdm(range(len(self.eventQueue)), desc=f"{self.policy:10}",position=barPosition,leave=False)
         else:
             rangeObject=range(len(self.eventQueue))
@@ -318,7 +318,7 @@ class Simulator:
 if __name__ == "__main__":
     day = 1
     dataLocation = "/home/jiarui/Serverless/dataset"
-    policy="WGD"
+    policy="COSTSIZE"
     memoryBudget = 10e3
     # in min
     timeLimit = 100

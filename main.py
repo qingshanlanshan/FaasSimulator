@@ -1,8 +1,7 @@
-from time import sleep
 from Include import *
 from Simulator import *
 from TraceGen import *
-from multiprocessing import Pool,Manager
+from multiprocessing import Pool
 from dataclasses import dataclass
 
 
@@ -14,7 +13,6 @@ def runSimulation(
     timeLimit,
     functionLimit,
     logInterval,
-    lock,
 ):
     if policy == "Baseline":
         memorySize = 1e7
@@ -51,7 +49,6 @@ if __name__ == "__main__":
         "FREQSIZE",
         "COSTSIZE",
         "RAND",
-        "WGD",
         "Baseline",
     ]
 
@@ -59,29 +56,31 @@ if __name__ == "__main__":
     timeLimit = 100
     # in ms
     logInterval = 1e3
+    # modify memory budget based on the actual dataset generated
     settings = {
         "Representative": Settings(
             timeLimit=timeLimit,
             functionLimit=400,
-            memoryBudget=6e4,
+            memoryBudget=17e3,
         ),
-        # "Rare": Settings(
-        #     timeLimit=timeLimit,
-        #     functionLimit=1000,
-        #     memoryBudget=5e3,
-        # ),
-        # "Random": Settings(
-        #     timeLimit=timeLimit,
-        #     functionLimit=400,
-        #     memoryBudget=1.2e5,
-        # ),
+        "Rare": Settings(
+            timeLimit=timeLimit,
+            functionLimit=1000,
+            memoryBudget=5e3,
+        ),
+        "Random": Settings(
+            timeLimit=timeLimit,
+            functionLimit=400,
+            memoryBudget=1.2e5,
+        ),
     }
 
     for dataset, setting in settings.items():
-        functionMap, invocationMap = load_data("/home/jiarui/Serverless/dataset", 1, dataset)
+        functionMap, invocationMap = load_data(
+            "/home/jiarui/Serverless/dataset", 1, dataset
+        )
         print(f"Memory budget: {setting.memoryBudget}")
         p = Pool(len(policies))
-        lock = Manager().Lock()
 
         for policy in policies:
             p.apply_async(
@@ -94,7 +93,6 @@ if __name__ == "__main__":
                     setting.timeLimit,
                     setting.functionLimit,
                     logInterval,
-                    lock,
                 ),
             )
         p.close()
@@ -119,17 +117,21 @@ if __name__ == "__main__":
                         minMemoryReq,
                     ]
                 )
-        l.sort(key=lambda x: x[1])
-        print(f" \nDataset: {dataset}")
-        print(
-            "Policy, %TimeIncrease, %ColdStart, PeakMemory"
-        )
         baseline = l[-1]
         baselineExcutionTime = float(baseline[3])
-        for _ in l[:-1]:
-            policy, coldStartTime, memorySize, excutingTime, nColdStart, nExcution, minMemoryReq = _
+        l.sort(key=lambda x: float(x[1]))
+        print(f" \nDataset: {dataset}")
+        print("Policy, %TimeIncrease, %ColdStart, PeakMemory")
+        for _ in l:
+            (
+                policy,
+                coldStartTime,
+                memorySize,
+                excutingTime,
+                nColdStart,
+                nExcution,
+                minMemoryReq,
+            ) = _
             print(
                 f"{policy}, {100*(float(excutingTime) - baselineExcutionTime)/baselineExcutionTime}, {100*float(nColdStart)/float(nExcution)}, {minMemoryReq}"
             )
-            
-            
