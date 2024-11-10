@@ -2,9 +2,9 @@ import numpy as np
 import csv 
 from Include import *
 import heapq
+import config
 
 def parse_data(datasetPath:str, day:int=1):
-    # datasetPath="/Users/jiaruiye/Code/Serverless/dataset"
     strDay = f"{day:02}"
     durationFile=f"{datasetPath}/function_durations_percentiles.anon.d{strDay}.csv"
     memoryFile=f"{datasetPath}/app_memory_percentiles.anon.d{strDay}.csv"
@@ -97,7 +97,7 @@ def parse_data(datasetPath:str, day:int=1):
             writer.writerow([invocation.HashOwner, invocation.HashApp, invocation.HashFunction, invocation.Trigger]+invocation.Counts)
     return functionMap, invocationMap
 
-def load_data(datasetPath:str, day:int=1, type:str=None):
+def load_data(datasetPath:str, day:int=1, type:str=None) -> tuple[dict[tuple[int,int,int],Function], dict[tuple[int,int,int],Invocation]]:
     strDay = f"{day:02}"
     functionMap = {}
     invocationMap = {}
@@ -134,7 +134,7 @@ def getRareData(functionMap, invocationMap, nFunction:int=100):
     for functionId in invocationMap:
         invocation = invocationMap[functionId]
         heapq.heappush(heap, (sum(invocation.Counts), functionId))
-    rareFuncs = heapq.nsmallest(nFunction, heap)
+    rareFuncs = heapq.nsmallest(len(invocationMap)//4, heap)
     newInvocationMap = {}
     newfunctionMap = {}
     for _, functionId in rareFuncs:
@@ -175,6 +175,7 @@ def getRepresentativeData(functionMap, invocationMap, nFunction:int=100):
     return newfunctionMap, newInvocationMap
     
 def getDataset(functionMap, invocationMap, datasetType:str, nFunction:int=100):
+    nFunction = int(nFunction)
     if datasetType == "Rare":
         return getRareData(functionMap, invocationMap, nFunction)
     elif datasetType == "Random":
@@ -201,8 +202,8 @@ def dumpData(functionMap, invocationMap, type:str, datasetPath:str, day:int=1):
     
 if __name__ == "__main__":
     for type in ["Representative", "Rare", "Random"]:
-        functionMap, invocationMap = load_data("/home/jiarui/Serverless/dataset", 1)
-        functionMap, invocationMap = getDataset(functionMap, invocationMap, type, 400 if type!="Rare" else 1000)
+        functionMap, invocationMap = load_data(config.datasetLocation, 1)
+        functionMap, invocationMap = getDataset(functionMap, invocationMap, type, 400 if type!="Rare" else 1.5e4)
         print(f"{type} dataset, function count: {len(invocationMap)}")
-        dumpData(functionMap, invocationMap, type, "/home/jiarui/Serverless/dataset", 1)
+        dumpData(functionMap, invocationMap, type, config.datasetLocation, 1)
         

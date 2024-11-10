@@ -1,39 +1,41 @@
 import numpy as np
+from dataclasses import dataclass
 
+@dataclass
 class Duration:
-    def __init__(self, HashOwner, HashApp, HashFunction, Average, Count, Minimum, Maximum):
-        self.HashOwner = HashOwner
-        self.HashApp = HashApp
-        self.HashFunction = HashFunction
-        self.Average = Average
-        self.Count = Count
-        self.Minimum = Minimum
-        self.Maximum = Maximum
+    HashOwner: int
+    HashApp: int
+    HashFunction: int
+    Average: float
+    Count: int
+    Minimum: float
+    Maximum: float
+    
 # HashOwner,HashApp,SampleCount,AverageAllocatedMb
+@dataclass
 class Memory:
-    def __init__(self, HashOwner, HashApp, SampleCount, AverageAllocatedMb):
-        self.HashOwner = HashOwner
-        self.HashApp = HashApp
-        self.SampleCount = SampleCount
-        self.AverageAllocatedMb = AverageAllocatedMb
+    HashOwner: int
+    HashApp: int
+    SampleCount: int
+    AverageAllocatedMb: int
         
 # HashOwner,HashApp,HashFunction,Trigger,1..1440
+@dataclass
 class Invocation:
-    def __init__(self, HashOwner, HashApp, HashFunction, Trigger:str, Counts:list[int]):
-        self.HashOwner = HashOwner
-        self.HashApp = HashApp
-        self.HashFunction = HashFunction
-        self.Trigger = Trigger
-        self.Counts = Counts
+    HashOwner: int
+    HashApp: int
+    HashFunction: int
+    Trigger: str
+    Counts: list[int]
 
+@dataclass
 class Function:
-    def __init__(self, HashOwner, HashApp, HashFunction, coldStartTime, duration, memory):
-        self.HashOwner = HashOwner
-        self.HashApp = HashApp
-        self.HashFunction = HashFunction
-        self.coldStartTime = coldStartTime
-        self.duration = duration
-        self.memory = memory
+    HashOwner: int
+    HashApp: int
+    HashFunction: int
+    coldStartTime: float
+    duration: float
+    memory: float
         
 def min2ms(minute:float)->float:
     return minute*60*1000

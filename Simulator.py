@@ -5,6 +5,7 @@ import heapq
 import csv
 from multiprocessing import current_process
 from TraceGen import *
+import config
 
 
 class Stats:
@@ -158,15 +159,14 @@ class Simulator:
 
     def getPriority(self, time, functionId):
         freq = self.getFreq(functionId, time)
-        weight = self.getWeight(functionId, time)
-        weight = np.log(freq + 1)
+        logFreq = np.log(freq + 1) + 1
         cost = self.functionMap[functionId].coldStartTime
         size = self.functionMap[functionId].memory
         priority = time
         if self.policy == "LRU":
-            priority = time
+            priority = self.logicalClock
         elif self.policy == "LFU":
-            priority = self.logicalClock + freq
+            priority = freq
         elif self.policy == "GD":
             priority = self.logicalClock + freq * (cost / size)
         elif self.policy == "FREQCOST":
@@ -175,14 +175,20 @@ class Simulator:
             priority = self.logicalClock + freq / size
         elif self.policy == "COSTSIZE":
             priority = self.logicalClock + cost / size
-        elif self.policy == "WGD":
-            priority = self.logicalClock + (cost / size) * weight
+        elif self.policy == "LGD":
+            priority = self.logicalClock + (cost / size) * logFreq
+        elif self.policy == "SIZE":
+            priority = self.logicalClock + 1/size
+        elif self.policy == "COST":
+            priority = self.logicalClock + cost
+        elif self.policy == "FREQ":
+            priority = self.logicalClock + freq
         elif self.policy == "TTL":
             priority = time
         elif self.policy == "RAND":
             priority = np.random.randint(10)
         self.log(
-            f"time {time}, clock {self.logicalClock}, functionId {functionId}, freq {freq}, cost {cost}, size {size}, weight {weight}, priority {priority}\n",
+            f"time {int(round(time))}, clock {self.logicalClock}, functionId {functionId}, freq {freq}, cost {cost}, size {size}, Lfreq {logFreq}, priority {priority}\n",
             filename=f"./log/{self.filename}.log",
         )
         return priority
@@ -284,7 +290,7 @@ class Simulator:
                 )
             )
             self.log(
-                f"time {time}, coldStartTime {self.coldStartTime}, memoryUsed {self.memoryUsed}, excutingTime {self.excutingTime}, nColdStart {self.nColdStart}, nExcution {self.nExcution}\n",
+                f"time {int(round(time))}, coldStartTime {self.coldStartTime}, memoryUsed {self.memoryUsed}, excutingTime {self.excutingTime}, nColdStart {self.nColdStart}, nExcution {self.nExcution}\n",
                 filename=f"./log/{self.filename}.log",
             )
 
@@ -317,7 +323,7 @@ class Simulator:
 
 if __name__ == "__main__":
     day = 1
-    dataLocation = "/home/jiarui/Serverless/dataset"
+    dataLocation = config.datasetLocation
     policy="COSTSIZE"
     memoryBudget = 10e3
     # in min

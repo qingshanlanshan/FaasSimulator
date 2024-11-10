@@ -3,6 +3,7 @@ from Simulator import *
 from TraceGen import *
 from multiprocessing import Pool
 from dataclasses import dataclass
+import config
 
 
 def runSimulation(
@@ -39,15 +40,15 @@ class Settings:
 
 if __name__ == "__main__":
     day = 1
-    dataLocation = "/home/jiarui/Serverless/dataset"
     policies = [
         "TTL",
         "LRU",
         "LFU",
         "GD",
-        "FREQCOST",
-        "FREQSIZE",
-        "COSTSIZE",
+        "LGD",
+        "SIZE",
+        "COST",
+        "FREQ",
         "RAND",
         "Baseline",
     ]
@@ -65,19 +66,19 @@ if __name__ == "__main__":
         ),
         "Rare": Settings(
             timeLimit=timeLimit,
-            functionLimit=1000,
-            memoryBudget=5e3,
+            functionLimit=1.5e4,
+            memoryBudget=6e4,
         ),
         "Random": Settings(
             timeLimit=timeLimit,
             functionLimit=400,
-            memoryBudget=1.2e5,
+            memoryBudget=4.5e4,
         ),
     }
 
     for dataset, setting in settings.items():
         functionMap, invocationMap = load_data(
-            "/home/jiarui/Serverless/dataset", 1, dataset
+            config.datasetLocation, 1, dataset
         )
         print(f"Memory budget: {setting.memoryBudget}")
         p = Pool(len(policies))
@@ -100,7 +101,7 @@ if __name__ == "__main__":
         l = []
         for policy in policies:
             # summary
-            with open(f"log/{policy}.csv", "r") as f:
+            with open(f"log/{policy}.csv", "r+") as f:
                 lines = f.readlines()
                 minMemoryReq = float(lines[0].split(",")[1])
                 time, coldStartTime, memorySize, excutingTime, nColdStart, nExcution = (
@@ -109,7 +110,7 @@ if __name__ == "__main__":
                 l.append(
                     [
                         policy,
-                        coldStartTime,
+                        int(float(coldStartTime)),
                         memorySize,
                         excutingTime,
                         nColdStart,
@@ -119,9 +120,9 @@ if __name__ == "__main__":
                 )
         baseline = l[-1]
         baselineExcutionTime = float(baseline[3])
-        l.sort(key=lambda x: float(x[1]))
-        print(f" \nDataset: {dataset}")
-        print("Policy, %TimeIncrease, %ColdStart, PeakMemory")
+        l.sort(key=lambda x: x[1])
+        print(f"Dataset: {dataset}")
+        print("Policy, coldStartTime, %TimeIncrease, %ColdStart, PeakMemory")
         for _ in l:
             (
                 policy,
@@ -133,5 +134,6 @@ if __name__ == "__main__":
                 minMemoryReq,
             ) = _
             print(
-                f"{policy}, {100*(float(excutingTime) - baselineExcutionTime)/baselineExcutionTime}, {100*float(nColdStart)/float(nExcution)}, {minMemoryReq}"
+                f"{policy:8}, {coldStartTime}, {100*(float(excutingTime) - baselineExcutionTime)/baselineExcutionTime:.2f}, {100*float(nColdStart)/float(nExcution):.2f}, {minMemoryReq:.2f}"
             )
+        print("")
